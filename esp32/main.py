@@ -1,6 +1,10 @@
 import micropython, sys, gc, network, socket, esp, select, time, struct
 from machine import Pin, I2C, PWM
 from motor import motor
+from comp import imu
+from pid import pid
+from mpu6050 import mpu
+
 
 esp.osdebug(None)
 gc.collect()
@@ -10,6 +14,11 @@ led = Pin(15,Pin.OUT)
 
 dcmotor = motor(3,5,7)
 dcmotor2 = motor(2,4,6)
+
+senzor = mpu( I2C(scl=Pin(35), sda=Pin(33), freq=400000) )
+comp_filter = imu()
+pid = pid(1.85, 0.99, 0.64)
+dcmotor_c = motor()
 
 ssid = 'ESP32-S2'
 pswd = '12345678'
@@ -57,6 +66,10 @@ def byte_to_int(b):
     
 while True:
     try:
+        uglovi = comp_filter.render(senzor.get_values_tuple())
+        pid.update(uglovi[1]-5.0, time.time())
+        dcmotor_c.from_pid(pid.output)
+        
         ready_socks, _, _ = select.select([s], [], [], 0)
         for ready_sock in ready_socks:
             data, addr = ready_sock.recvfrom(2)
@@ -69,7 +82,6 @@ while True:
             else:
                 s.close()
                 s = listen_mcast()
-
             
     except OSError:
         pass    
